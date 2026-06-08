@@ -9,9 +9,18 @@ import org.springframework.security.oauth2.client.oidc.web.logout.OidcClientInit
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserService;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtValidators;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.oidc.OidcIdTokenValidator;
+import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.springframework.security.oauth2.client.registration.ClientRegistration;
 import org.synyx.urlaubsverwaltung.person.PersonService;
 import org.synyx.urlaubsverwaltung.tenancy.configuration.single.ConditionalOnSingleTenantMode;
 
+import java.time.Duration;
 import java.util.List;
 
 @Configuration
@@ -48,31 +57,31 @@ class OidcSecurityConfiguration {
     }
 
     @Bean
-    public JwtDecoderFactory<ClientRegistration> oidcIdTokenDecoderFactory(RestTemplateBuilder builder) {
+    JwtDecoder oidcJwtDecoder(ClientRegistrationRepository repo, RestTemplateBuilder builder) {
         RestTemplate restTemplate = builder
-            .connectTimeout(Duration.ofSeconds(10))
-            .readTimeout(Duration.ofSeconds(10))
-            .build();
-
-        return registration -> {
-            String jwksUri = registration.getProviderDetails().getJwkSetUri();
-            String issuerUri = registration.getProviderDetails().getIssuerUri();
-
-            NimbusJwtDecoder decoder = NimbusJwtDecoder
+                .connectTimeout(Duration.ofSeconds(10))
+                .readTimeout(Duration.ofSeconds(10))
+                .build();
+    
+        ClientRegistration registration = repo.iterator().next();
+    
+        String jwksUri = registration.getProviderDetails().getJwkSetUri();
+        String issuerUri = registration.getProviderDetails().getIssuerUri();
+    
+        NimbusJwtDecoder decoder = NimbusJwtDecoder
                 .withJwkSetUri(jwksUri)
                 .restOperations(restTemplate)
                 .build();
-
-            OAuth2TokenValidator<Jwt> defaultValidators = issuerUri != null
+    
+        OAuth2TokenValidator<Jwt> defaultValidators = issuerUri != null
                 ? JwtValidators.createDefaultWithIssuer(issuerUri)
                 : JwtValidators.createDefault();
-
-            decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
+    
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
                 defaultValidators,
                 new OidcIdTokenValidator(registration)
-            ));
-
-            return decoder;
-        };
+        ));
+    
+        return decoder;
     }
 }
