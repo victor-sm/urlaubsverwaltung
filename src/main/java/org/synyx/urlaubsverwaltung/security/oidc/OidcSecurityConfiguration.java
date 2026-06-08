@@ -46,4 +46,33 @@ class OidcSecurityConfiguration {
         oidcClientInitiatedLogoutSuccessHandler.setPostLogoutRedirectUri(securityConfigurationProperties.getPostLogoutRedirectUri());
         return oidcClientInitiatedLogoutSuccessHandler;
     }
+
+    @Bean
+    public JwtDecoderFactory<ClientRegistration> oidcIdTokenDecoderFactory(RestTemplateBuilder builder) {
+        RestTemplate restTemplate = builder
+            .connectTimeout(Duration.ofSeconds(10))
+            .readTimeout(Duration.ofSeconds(10))
+            .build();
+
+        return registration -> {
+            String jwksUri = registration.getProviderDetails().getJwkSetUri();
+            String issuerUri = registration.getProviderDetails().getIssuerUri();
+
+            NimbusJwtDecoder decoder = NimbusJwtDecoder
+                .withJwkSetUri(jwksUri)
+                .restOperations(restTemplate)
+                .build();
+
+            OAuth2TokenValidator<Jwt> defaultValidators = issuerUri != null
+                ? JwtValidators.createDefaultWithIssuer(issuerUri)
+                : JwtValidators.createDefault();
+
+            decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
+                defaultValidators,
+                new OidcIdTokenValidator(registration)
+            ));
+
+            return decoder;
+        };
+    }
 }
